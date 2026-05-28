@@ -57,6 +57,12 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:0
 .nav-tab{padding:0 16px;font-size:13px;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;height:100%;transition:color .15s,border-color .15s;font-family:var(--font);white-space:nowrap}
 .nav-tab:hover{color:var(--text)}
 .nav-tab.active{color:var(--text);border-bottom-color:var(--text);font-weight:500}
+.nav-tab{position:relative}
+.tab-badge{position:absolute;top:10px;right:6px;background:#E24B4A;color:#fff;font-size:9px;font-weight:600;min-width:16px;height:16px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 4px;font-family:var(--mono);line-height:1}
+.tab-badge.show{display:flex}
+.cal-pending-bar{display:none;align-items:center;gap:6px;background:var(--warnbg);border:1px solid #E8C97A;border-radius:var(--radius);padding:6px 12px;font-size:12px;color:var(--warn);margin-bottom:14px}
+.cal-pending-bar.show{display:flex}
+.pending-dot{width:6px;height:6px;border-radius:50%;background:#C17F24;flex-shrink:0}
 .header-right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-shrink:0}
 .cap-pill{display:none;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:4px 11px;font-size:12px;color:var(--muted)}
 .cap-pill.show{display:flex}
@@ -208,7 +214,7 @@ main{padding:20px 24px;overflow:auto}
   <div class="logo">Team<span>Planner</span></div>
   <nav class="nav-tabs">
     <button class="nav-tab active" onclick="switchTab('calendar',this)">Calendario</button>
-    <button class="nav-tab" onclick="switchTab('queue',this)">Cola de tareas</button>
+    <button class="nav-tab" onclick="switchTab('queue',this)">Cola de tareas<span class="tab-badge" id="pending-badge"></span></button>
     <button class="nav-tab" onclick="switchTab('projects',this)">Proyectos</button>
     <button class="nav-tab" onclick="switchTab('history',this)">Historial</button>
   </nav>
@@ -231,6 +237,7 @@ main{padding:20px 24px;overflow:auto}
         <button class="month-btn" onclick="nextMonth()">›</button>
       </div>
     </div>
+    <div class="cal-pending-bar" id="cal-pending-bar"><span class="pending-dot"></span><span id="cal-pending-text"></span></div>
     <div class="cal-grid" id="cal-grid"></div>
   </div>
 
@@ -489,7 +496,6 @@ function renderQueue(){
         ?'<span class="hours-tag pending editable" onclick="editHours(event,\''+t.id+'\')">⏳ Definir horas</span>'
         :'<span class="hours-tag editable" onclick="editHours(event,\''+t.id+'\')" title="Click para editar">'+t.hours+'h</span>'
     }
-
     row.innerHTML=
       '<span class="grip">⠿</span>'+
       '<button class="check-btn" onclick="completeTask(\''+t.id+'\')" title="Marcar como hecha"></button>'+
@@ -504,6 +510,7 @@ function renderQueue(){
       '</div>'
     list.appendChild(row)
   })
+  updatePendingIndicators()
 }
 
 function editHours(e,taskId){
@@ -518,7 +525,7 @@ function editHours(e,taskId){
     const val=parseFloat(input.value)
     const newH=isNaN(val)||val<=0?null:val
     await sb.from('tasks').update({hours:newH}).eq('id',taskId)
-    task.hours=newH; renderQueue(); renderCalendar()
+    task.hours=newH; renderQueue(); renderCalendar(); updatePendingIndicators()
     toast(newH?newH+'h guardadas ✓':'Sin horas — pendiente de definir')
   }
   input.addEventListener('blur',save)
@@ -531,7 +538,7 @@ async function completeTask(id){
   const t=tasks.find(x=>x.id===id)
   if(t){t.done=true;t.done_at=now;doneTasks.unshift(t)}
   tasks=tasks.filter(x=>x.id!==id)
-  renderQueue(); renderCalendar()
+  renderQueue(); renderCalendar(); updatePendingIndicators()
   toast('Tarea completada ✓')
 }
 
@@ -642,7 +649,7 @@ async function saveModal(){
     const {data,error}=await sb.from('tasks').insert({
       name,hours,deadline,done:false,position:tasks.length
     }).select().single()
-    if(!error){tasks.push(data);renderQueue();renderCalendar();toast('Tarea añadida ✓')}
+    if(!error){tasks.push(data);renderQueue();renderCalendar();updatePendingIndicators();toast('Tarea añadida ✓')}
     else toast('Error: '+error.message)
   } else {
     const {data,error}=await sb.from('projects').insert({
@@ -668,11 +675,28 @@ function switchTab(tab,btn){
   if(tab==='history'){renderHistory()}
 }
 
+// ── PENDING INDICATORS ─────────────────────────
+function updatePendingIndicators(){
+  const count=tasks.filter(t=>!t.hours||t.hours===0).length
+  const badge=document.getElementById('pending-badge')
+  const bar=document.getElementById('cal-pending-bar')
+  const barText=document.getElementById('cal-pending-text')
+  if(count>0){
+    badge.textContent=count; badge.classList.add('show')
+    bar.classList.add('show')
+    barText.textContent=count+' tarea'+(count>1?'s':'')+' sin horas definidas — pendiente de Kinesso'
+  } else {
+    badge.classList.remove('show')
+    bar.classList.remove('show')
+  }
+}
+
 // ── INIT ───────────────────────────────────────
 async function init(){
   document.getElementById('cal-grid').innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-size:13px">Cargando...</div>'
   await Promise.all([loadTasks(),loadDone(),loadProjects()])
   renderCalendar()
+  updatePendingIndicators()
 }
 </script>
 </body>
