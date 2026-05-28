@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Team Planner</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ── SUSTITUYE ESTAS DOS LÍNEAS CON TUS DATOS DE SUPABASE ── */
+/* ver instrucciones abajo en el script */
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F5F4F0;
+  --surface:#FFFFFF;
+  --border:#E2E0D8;
+  --text:#1A1917;
+  --muted:#8A8880;
+  --accent:#1A1917;
+  --p1:#2D1B69;--p1bg:#EAE6FF;
+  --p2:#0C3D6B;--p2bg:#E0EFFF;
+  --p3:#1A4A1A;--p3bg:#E0F0E0;
+  --p4:#4A4030;--p4bg:#F0EDE0;
+  --danger:#8B2020;--dangerbg:#FFE8E8;
+  --success:#1A4A1A;--successbg:#E0F0E0;
+  --warn:#5C3A00;--warnbg:#FFF3D0;
+  --font:'DM Sans',sans-serif;
+  --mono:'DM Mono',monospace;
+  --radius:8px;--radius-lg:14px;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5}
+
+/* LAYOUT */
+.app{display:grid;grid-template-rows:auto 1fr;min-height:100vh}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;gap:0;height:52px}
+.logo{font-size:15px;font-weight:500;letter-spacing:-.3px;margin-right:32px}
+.logo span{color:var(--muted);font-weight:300}
+.nav-tabs{display:flex;gap:0;height:100%}
+.nav-tab{padding:0 18px;font-size:13px;font-weight:400;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;height:100%;transition:color .15s,border-color .15s;font-family:var(--font)}
+.nav-tab:hover{color:var(--text)}
+.nav-tab.active{color:var(--text);border-bottom-color:var(--text);font-weight:500}
+.header-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.cap-pill{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--muted)}
+.cap-pill input{width:30px;border:none;background:none;font-size:12px;color:var(--text);text-align:center;font-family:var(--mono);font-weight:500}
+.cap-pill input:focus{outline:none}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius);font-size:13px;font-family:var(--font);cursor:pointer;transition:all .15s;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.btn:hover{background:var(--bg)}
+.btn-primary{background:var(--text);color:#fff;border-color:var(--text)}
+.btn-primary:hover{background:#333}
+
+main{padding:24px 28px;overflow:auto}
+.view{display:none}.view.active{display:block}
+
+/* CALENDAR */
+.cal-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.month-nav{display:flex;align-items:center;gap:8px}
+.month-nav button{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:background .15s}
+.month-nav button:hover{background:var(--bg)}
+.month-label{font-size:16px;font-weight:500;min-width:150px}
+
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--border);gap:1px}
+.cal-head{background:var(--bg);padding:8px 10px;font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.cal-cell{background:var(--surface);min-height:100px;padding:8px;position:relative;transition:background .1s;vertical-align:top}
+.cal-cell:hover{background:#FAFAF8}
+.cal-cell.other{background:#FAFAF8}
+.cal-cell.other .day-n{color:var(--border)}
+.cal-cell.weekend{background:#FAFAF8}
+.cal-cell.is-today .day-n{background:var(--text);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px}
+.day-n{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px}
+.day-load{font-size:10px;color:var(--muted);margin-bottom:4px;font-family:var(--mono)}
+.day-load.over{color:var(--danger)}
+.chip{font-size:11px;padding:2px 7px;border-radius:4px;margin-bottom:2px;display:flex;align-items:center;justify-content:space-between;gap:4px;cursor:default;line-height:1.4}
+.chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.chip-h{font-family:var(--mono);font-size:10px;opacity:.7;flex-shrink:0}
+.chip.p1{background:var(--p1bg);color:var(--p1)}
+.chip.p2{background:var(--p2bg);color:var(--p2)}
+.chip.p3{background:var(--p3bg);color:var(--p3)}
+.chip.p4{background:var(--p4bg);color:var(--p4)}
+.more{font-size:10px;color:var(--muted);margin-top:2px}
+
+/* QUEUE */
+.queue-wrap{max-width:760px}
+.section-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.section-head h2{font-size:15px;font-weight:500}
+.meta-pill{font-size:11px;font-family:var(--mono);background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--muted)}
+.task-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:grab;transition:all .15s;margin-bottom:6px}
+.task-row:hover{border-color:#C8C6BE;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.task-row.drag-over{border-color:var(--text);border-style:dashed}
+.task-row.dragging{opacity:.3}
+.grip{color:var(--border);font-size:18px;cursor:grab;line-height:1;user-select:none}
+.prio-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.prio-dot.p1{background:var(--p1)}.prio-dot.p2{background:var(--p2)}.prio-dot.p3{background:var(--p3)}.prio-dot.p4{background:var(--p4)}
+.task-name-text{flex:1;font-size:13px;font-weight:400}
+.task-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.tag{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.tag.day{font-family:var(--mono)}
+.hours-tag{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.del-btn{background:none;border:none;cursor:pointer;color:var(--border);font-size:16px;padding:2px;line-height:1;transition:color .15s}
+.del-btn:hover{color:var(--danger)}
+
+/* PROJECTS */
+.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.proj-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s}
+.proj-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.07)}
+.proj-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.proj-title{font-size:14px;font-weight:500;line-height:1.3}
+.status-pill{font-size:10px;padding:3px 8px;border-radius:20px;flex-shrink:0;font-weight:500;letter-spacing:.3px;text-transform:uppercase}
+.status-pill.active{background:var(--successbg);color:var(--success)}
+.status-pill.pending{background:var(--warnbg);color:var(--warn)}
+.status-pill.done{background:var(--bg);color:var(--muted)}
+.proj-desc{font-size:12px;color:var(--muted);line-height:1.5}
+.proj-meta{display:flex;gap:10px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.proj-meta span{display:flex;align-items:center;gap:4px}
+.deadline-near{color:var(--danger)!important}
+
+/* MODAL */
+.overlay{display:none;position:fixed;inset:0;background:rgba(26,25,23,.45);z-index:200;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius-lg);padding:24px;width:380px;box-shadow:0 8px 40px rgba(0,0,0,.15)}
+.modal h3{font-size:15px;font-weight:500;margin-bottom:18px}
+.fg{margin-bottom:14px}
+.fg label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px}
+.fg input,.fg select,.fg textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--font);background:var(--surface);color:var(--text);transition:border-color .15s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:#999}
+.fg textarea{resize:vertical;min-height:64px}
+.fg-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:10px 18px;border-radius:var(--radius);font-size:13px;opacity:0;transform:translateY(8px);transition:all .25s;z-index:300;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* EMPTY */
+.empty{text-align:center;padding:48px 0;color:var(--muted)}
+.empty p{font-size:13px}
+
+/* LOADING */
+.loading{text-align:center;padding:48px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">Team<span>Planner</span></div>
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="switchTab('calendar',this)">Calendario</button>
+    <button class="nav-tab" onclick="switchTab('queue',this)">Cola de tareas</button>
+    <button class="nav-tab" onclick="switchTab('projects',this)">Proyectos</button>
+  </nav>
+  <div class="header-actions">
+    <div class="cap-pill" title="Horas disponibles por día">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      <input type="number" id="daily-cap" value="16" min="1" max="24" onchange="renderCalendar();renderQueue()"/>
+      <span>h/día</span>
+    </div>
+    <button class="btn" onclick="openModal('task')">+ Tarea</button>
+    <button class="btn btn-primary" onclick="openModal('project')">+ Proyecto</button>
+  </div>
+</header>
+
+<main>
+  <div id="view-calendar" class="view active">
+    <div class="cal-toolbar">
+      <div class="month-nav">
+        <button onclick="prevMonth()">‹</button>
+        <span class="month-label" id="month-label"></span>
+        <button onclick="nextMonth()">›</button>
+      </div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+
+  <div id="view-queue" class="view">
+    <div class="queue-wrap">
+      <div class="section-head">
+        <h2>Cola de tareas</h2>
+        <span class="meta-pill" id="queue-meta">—</span>
+      </div>
+      <div id="queue-list"></div>
+    </div>
+  </div>
+
+  <div id="view-projects" class="view">
+    <div class="section-head">
+      <h2>Proyectos transversales</h2>
+    </div>
+    <div class="proj-grid" id="proj-grid"></div>
+  </div>
+</main>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeOverlay(event)">
+  <div class="modal">
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  ⚠️  SUSTITUYE ESTAS DOS LÍNEAS CON TUS DATOS
+const SUPABASE_URL = https://lifatkqvbeehphcftvax.supabase.co/rest/v1/'
+const SUPABASE_KEY = 'sb_publishable_z672kt4rhf9tMDnoYLKbAA_yN8b3wEG'
+// ══════════════════════════════════════════════════
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const DAYS_SHORT = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
+const PRIO = {1:'Urgente',2:'Alta',3:'Normal',4:'Baja'}
+
+let today = new Date()
+let curYear = today.getFullYear()
+let curMonth = today.getMonth()
+let tasks = []
+let projects = []
+let modalType = 'task'
+let dragIdx = null
+
+function fmtKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
+function todayKey(){ return fmtKey(today) }
+
+function toast(msg){
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.classList.add('show')
+  setTimeout(()=>el.classList.remove('show'), 2500)
+}
+
+// ── DATA ──────────────────────────────────────────
+async function loadTasks(){
+  const {data,error} = await sb.from('tasks').select('*').order('position')
+  if(!error) tasks = data || []
+}
+async function loadProjects(){
+  const {data,error} = await sb.from('projects').select('*').order('created_at')
+  if(!error) projects = data || []
+}
+
+// ── ASSIGN DAYS ───────────────────────────────────
+function assignDays(){
+  const cap = parseInt(document.getElementById('daily-cap').value)||16
+  const workDays = []
+  const tmp = new Date(curYear,curMonth,1)
+  while(tmp.getMonth()===curMonth){
+    const dow = tmp.getDay()
+    if(dow!==0&&dow!==6) workDays.push(new Date(tmp))
+    tmp.setDate(tmp.getDate()+1)
+  }
+  const asgn = {}
+  let dayIdx = 0
+  tasks.forEach(t=>{
+    let rem = t.hours
+    while(rem>0&&dayIdx<workDays.length){
+      const key = fmtKey(workDays[dayIdx])
+      if(!asgn[key]) asgn[key]={tasks:[],totalH:0}
+      const avail = cap - asgn[key].totalH
+      if(avail<=0){dayIdx++;continue}
+      const take = Math.min(rem,avail)
+      const ex = asgn[key].tasks.find(x=>x.id===t.id)
+      if(ex) ex.h+=take; else asgn[key].tasks.push({id:t.id,name:t.name,h:take,prio:t.prio})
+      asgn[key].totalH+=take
+      rem-=take
+      if(asgn[key].totalH>=cap) dayIdx++
+    }
+  })
+  return {asgn,cap}
+}
+
+// ── CALENDAR ──────────────────────────────────────
+function renderCalendar(){
+  document.getElementById('month-label').textContent = MONTHS[curMonth]+' '+curYear
+  const {asgn,cap} = assignDays()
+  const grid = document.getElementById('cal-grid')
+  grid.innerHTML = ''
+  DAYS_SHORT.forEach(d=>{ const h=document.createElement('div');h.className='cal-head';h.textContent=d;grid.appendChild(h) })
+  const first = new Date(curYear,curMonth,1)
+  let startDow = first.getDay(); if(startDow===0) startDow=7
+  for(let i=1;i<startDow;i++){
+    const dt = new Date(curYear,curMonth,1-startDow+i)
+    grid.appendChild(makeCell(dt,true,asgn,cap))
+  }
+  const dim = new Date(curYear,curMonth+1,0).getDate()
+  for(let d=1;d<=dim;d++) grid.appendChild(makeCell(new Date(curYear,curMonth,d),false,asgn,cap))
+  const filled = grid.children.length - 7
+  const rem = (7-(filled%7))%7
+  for(let i=1;i<=rem;i++) grid.appendChild(makeCell(new Date(curYear,curMonth+1,i),true,asgn,cap))
+}
+
+function makeCell(dt,other,asgn,cap){
+  const cell = document.createElement('div')
+  const dow = dt.getDay()
+  const key = fmtKey(dt)
+  cell.className = 'cal-cell'+(other?' other':'')+(dow===0||dow===6?' weekend':'')+(key===todayKey()?' is-today':'')
+  const numDiv = document.createElement('div'); numDiv.className='day-n'; numDiv.textContent=dt.getDate(); cell.appendChild(numDiv)
+  if(dow!==0&&dow!==6&&!other){
+    const d = asgn[key]
+    if(d){
+      const ld = document.createElement('div')
+      ld.className='day-load'+(d.totalH>cap?' over':'')
+      ld.textContent=Math.round(d.totalH)+'h / '+cap+'h'
+      cell.appendChild(ld)
+      d.tasks.slice(0,3).forEach(t=>{
+        const chip = document.createElement('div')
+        chip.className='chip p'+t.prio
+        chip.innerHTML='<span class="chip-name">'+t.name+'</span><span class="chip-h">'+t.h+'h</span>'
+        cell.appendChild(chip)
+      })
+      if(d.tasks.length>3){ const m=document.createElement('div');m.className='more';m.textContent='+'+(d.tasks.length-3)+' más';cell.appendChild(m) }
+    }
+  }
+  return cell
+}
+
+function prevMonth(){ curMonth--; if(curMonth<0){curMonth=11;curYear--}; renderCalendar() }
+function nextMonth(){ curMonth++; if(curMonth>11){curMonth=0;curYear++}; renderCalendar() }
+
+// ── QUEUE ─────────────────────────────────────────
+function renderQueue(){
+  const cap = parseInt(document.getElementById('daily-cap').value)||16
+  const {asgn} = assignDays()
+  const taskDay = {}
+  Object.entries(asgn).forEach(([day,data])=>data.tasks.forEach(t=>{ if(!taskDay[t.id]) taskDay[t.id]=day }))
+  const list = document.getElementById('queue-list')
+  list.innerHTML=''
+  const totalH = tasks.reduce((a,t)=>a+(t.hours||0),0)
+  document.getElementById('queue-meta').textContent = Math.round(totalH)+'h totales · '+cap+'h/día'
+  if(!tasks.length){ list.innerHTML='<div class="empty"><p>No hay tareas. Añade una con el botón de arriba.</p></div>'; return }
+  tasks.forEach((t,idx)=>{
+    const row = document.createElement('div')
+    row.className='task-row'; row.draggable=true; row.dataset.idx=idx
+    row.addEventListener('dragstart',e=>{ dragIdx=idx; e.currentTarget.classList.add('dragging') })
+    row.addEventListener('dragend',e=>e.currentTarget.classList.remove('dragging'))
+    row.addEventListener('dragover',e=>{ e.preventDefault(); e.currentTarget.classList.add('drag-over') })
+    row.addEventListener('dragleave',e=>e.currentTarget.classList.remove('drag-over'))
+    row.addEventListener('drop',async e=>{
+      e.preventDefault(); e.currentTarget.classList.remove('drag-over')
+      if(dragIdx===null||dragIdx===idx) return
+      const moved = tasks.splice(dragIdx,1)[0]; tasks.splice(idx,0,moved)
+      dragIdx=null
+      await reorderTasks()
+      renderQueue(); renderCalendar()
+    })
+    const dayKey = taskDay[t.id]
+    const dayStr = dayKey ? (parseInt(dayKey.split('-')[2])+' '+MONTHS[parseInt(dayKey.split('-')[1])-1].slice(0,3)) : '—'
+    row.innerHTML=`
+      <span class="grip">⠿</span>
+      <div class="prio-dot p${t.prio}" title="${PRIO[t.prio]}"></div>
+      <span class="task-name-text">${t.name}</span>
+      <div class="task-right">
+        ${t.client?'<span class="tag">'+t.client+'</span>':''}
+        <span class="hours-tag">${t.hours}h</span>
+        <span class="tag day">📅 ${dayStr}</span>
+        <button class="del-btn" onclick="deleteTask('${t.id}')" title="Eliminar">✕</button>
+      </div>`
+    list.appendChild(row)
+  })
+}
+
+async function reorderTasks(){
+  const updates = tasks.map((t,i)=>sb.from('tasks').update({position:i}).eq('id',t.id))
+  await Promise.all(updates)
+}
+
+async function deleteTask(id){
+  if(!confirm('¿Eliminar esta tarea?')) return
+  await sb.from('tasks').delete().eq('id',id)
+  tasks = tasks.filter(t=>t.id!==id)
+  renderQueue(); renderCalendar()
+  toast('Tarea eliminada')
+}
+
+// ── PROJECTS ──────────────────────────────────────
+function renderProjects(){
+  const grid = document.getElementById('proj-grid')
+  grid.innerHTML=''
+  if(!projects.length){ grid.innerHTML='<div class="empty"><p>No hay proyectos aún.</p></div>'; return }
+  const statusLabel = {active:'En curso',pending:'Pendiente',done:'Completado'}
+  projects.forEach(p=>{
+    const dl = p.deadline ? new Date(p.deadline) : null
+    const daysLeft = dl ? Math.ceil((dl-today)/(1000*60*60*24)) : null
+    const nearClass = daysLeft!==null&&daysLeft<14 ? ' deadline-near':''
+    const card = document.createElement('div'); card.className='proj-card'
+    card.innerHTML=`
+      <div class="proj-top">
+        <div class="proj-title">${p.name}</div>
+        <span class="status-pill ${p.status}">${statusLabel[p.status]||p.status}</span>
+      </div>
+      ${p.description?'<div class="proj-desc">'+p.description+'</div>':''}
+      <div class="proj-meta">
+        ${p.client?'<span>🏢 '+p.client+'</span>':''}
+        ${dl?'<span class="'+nearClass+'">📅 '+dl.toLocaleDateString('es-ES',{day:'numeric',month:'short'})+(daysLeft!==null?' · '+(daysLeft>0?daysLeft+'d':'vencido'):'')+'</span>':''}
+      </div>`
+    grid.appendChild(card)
+  })
+}
+
+// ── MODAL ─────────────────────────────────────────
+function openModal(type){
+  modalType=type
+  document.getElementById('modal-title').textContent = type==='task'?'Nueva tarea':'Nuevo proyecto'
+  const body = document.getElementById('modal-body')
+  if(type==='task'){
+    body.innerHTML=`
+      <div class="fg"><label>Nombre</label><input id="f-name" type="text" placeholder="Ej: Informe semanal"/></div>
+      <div class="fg-row">
+        <div class="fg"><label>Cliente</label><input id="f-client" type="text" placeholder="Ej: Massimo Dutti"/></div>
+        <div class="fg"><label>Prioridad</label><select id="f-prio"><option value="1">🔴 Urgente</option><option value="2">🟠 Alta</option><option value="3" selected>🟡 Normal</option><option value="4">⚪ Baja</option></select></div>
+      </div>
+      <div class="fg"><label>Horas estimadas</label><input id="f-hours" type="number" value="2" min="0.5" step="0.5"/></div>
+      <div class="fg"><label>Notas</label><textarea id="f-note" placeholder="Contexto adicional..."></textarea></div>`
+  } else {
+    const defDate = new Date(curYear,curMonth+1,0).toISOString().slice(0,10)
+    body.innerHTML=`
+      <div class="fg"><label>Nombre del proyecto</label><input id="f-name" type="text" placeholder="Ej: Lanzamiento Bing Ads UK"/></div>
+      <div class="fg"><label>Cliente</label><input id="f-client" type="text" placeholder="Ej: Massimo Dutti"/></div>
+      <div class="fg"><label>Descripción</label><textarea id="f-note" placeholder="Alcance o contexto..."></textarea></div>
+      <div class="fg-row">
+        <div class="fg"><label>Deadline</label><input id="f-deadline" type="date" value="${defDate}"/></div>
+        <div class="fg"><label>Estado</label><select id="f-status"><option value="pending">Pendiente</option><option value="active">En curso</option><option value="done">Completado</option></select></div>
+      </div>`
+  }
+  document.getElementById('overlay').classList.add('open')
+  setTimeout(()=>document.getElementById('f-name').focus(),50)
+}
+
+function closeModal(){ document.getElementById('overlay').classList.remove('open') }
+function closeOverlay(e){ if(e.target===document.getElementById('overlay')) closeModal() }
+
+async function saveModal(){
+  const name = document.getElementById('f-name').value.trim()
+  if(!name){ alert('El nombre es obligatorio'); return }
+  if(modalType==='task'){
+    const {data,error} = await sb.from('tasks').insert({
+      name,
+      client:document.getElementById('f-client').value||null,
+      hours:parseFloat(document.getElementById('f-hours').value)||2,
+      prio:parseInt(document.getElementById('f-prio').value)||3,
+      note:document.getElementById('f-note').value||null,
+      position:tasks.length
+    }).select().single()
+    if(!error){ tasks.push(data); renderQueue(); renderCalendar(); toast('Tarea añadida ✓') }
+  } else {
+    const {data,error} = await sb.from('projects').insert({
+      name,
+      client:document.getElementById('f-client').value||null,
+      description:document.getElementById('f-note').value||null,
+      deadline:document.getElementById('f-deadline').value||null,
+      status:document.getElementById('f-status').value||'pending'
+    }).select().single()
+    if(!error){ projects.push(data); renderProjects(); toast('Proyecto añadido ✓') }
+  }
+  closeModal()
+}
+
+// ── TABS ──────────────────────────────────────────
+function switchTab(tab,btn){
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'))
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'))
+  btn.classList.add('active')
+  document.getElementById('view-'+tab).classList.add('active')
+  if(tab==='queue') renderQueue()
+  if(tab==='projects') renderProjects()
+}
+
+// ── INIT ──────────────────────────────────────────
+async function init(){
+  document.getElementById('cal-grid').innerHTML='<div class="loading" style="grid-column:1/-1">Cargando...</div>'
+  await Promise.all([loadTasks(),loadProjects()])
+  renderCalendar()
+}
+
+init()
+</script>
+</body>
+</html>
