@@ -101,7 +101,27 @@ main{padding:20px 24px;overflow:auto}
 .chip.p3{background:var(--p3bg);color:var(--p3)}.chip.p4{background:var(--p4bg);color:var(--p4)}
 .chip.has-deadline{border-left:2px solid #C17F24}
 .chip.no-hours{opacity:.7;font-style:italic}
-.more{font-size:10px;color:var(--muted);margin-top:1px}
+.chip.done-chip{background:#E8F5E8;color:#3B6B3B;opacity:.6;text-decoration:line-through}
+.chip.done-chip .chip-h{opacity:.5}
+.more{font-size:10px;color:var(--muted);margin-top:1px;cursor:pointer;padding:1px 4px;border-radius:3px;transition:background .1s}
+.more:hover{background:var(--bg)}
+
+/* ── DAY POPUP ── */
+.day-popup{position:fixed;z-index:400;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 8px 32px rgba(0,0,0,.14);padding:14px;width:240px;pointer-events:auto;animation:popIn .15s ease}
+@keyframes popIn{from{opacity:0;transform:scale(.96) translateY(4px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.day-popup-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.day-popup-date{font-size:13px;font-weight:500}
+.day-popup-load{font-size:11px;font-family:var(--mono);color:var(--muted)}
+.day-popup-close{background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:0 2px}
+.day-popup-close:hover{color:var(--text)}
+.day-popup-task{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;margin-bottom:2px;font-size:12px}
+.day-popup-task.done-task{opacity:.5;text-decoration:line-through}
+.popup-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.popup-dot.p1{background:var(--p1)}.popup-dot.p2{background:var(--p2)}.popup-dot.p3{background:var(--p3)}.popup-dot.p4{background:var(--p4)}.popup-dot.done{background:#3B6B3B}
+.popup-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.popup-h{font-family:var(--mono);font-size:10px;color:var(--muted);flex-shrink:0}
+.popup-dl{font-size:10px;flex-shrink:0}
+.day-popup-empty{font-size:12px;color:var(--muted);text-align:center;padding:8px 0}
 
 /* ── QUEUE ── */
 .queue-outer{display:flex;justify-content:center}
@@ -214,7 +234,7 @@ main{padding:20px 24px;overflow:auto}
   <div class="logo">Team<span>Planner</span></div>
   <nav class="nav-tabs">
     <button class="nav-tab active" onclick="switchTab('calendar',this)">Calendario</button>
-    <button class="nav-tab" onclick="switchTab('queue',this)">Cola de tareas<span class="tab-badge" id="pending-badge"></span></button>
+    <button class="nav-tab" onclick="switchTab('queue',this)">Orden de prioridades<span class="tab-badge" id="pending-badge"></span></button>
     <button class="nav-tab" onclick="switchTab('projects',this)">Proyectos</button>
     <button class="nav-tab" onclick="switchTab('history',this)">Historial</button>
   </nav>
@@ -243,7 +263,7 @@ main{padding:20px 24px;overflow:auto}
 
   <div id="view-queue" class="view">
     <div class="queue-outer"><div class="queue-wrap">
-      <div class="sec-head"><h2>Cola de tareas</h2></div>
+      <div class="sec-head"><h2>Orden de prioridades diario</h2></div>
       <div id="queue-list"></div>
     </div></div>
   </div>
@@ -364,45 +384,50 @@ function getWorkDaysFrom(fromDate, year, month){
 
 function assignDays(){
   const cap=parseInt(document.getElementById('daily-cap').value)||16
-  // Work days starting from today in current viewed month
   const workDays=getWorkDaysFrom(today, curYear, curMonth)
-  // If today is beyond this month, show from 1st
   if(workDays.length===0){
     const tmp=new Date(curYear,curMonth,1)
     while(tmp.getMonth()===curMonth){ const d=tmp.getDay(); if(d!==0&&d!==6) workDays.push(new Date(tmp)); tmp.setDate(tmp.getDate()+1) }
   }
-
   const asgn={}; let dayIdx=0
 
-  // Separate tasks with and without deadline
-  const withDeadline = tasks.filter(t=>t.deadline).sort((a,b)=>new Date(a.deadline)-new Date(b.deadline))
-  const withoutDeadline = tasks.filter(t=>!t.deadline)
-  const ordered = [...withDeadline, ...withoutDeadline]
+  // Place done tasks on their completion day (count hours toward that day)
+  doneTasks.forEach(t=>{
+    if(!t.done_at) return
+    const doneDay=t.done_date?new Date(t.done_date+'T12:00:00'):new Date(t.done_at); doneDay.setHours(0,0,0,0)
+    if(doneDay.getFullYear()!==curYear||doneDay.getMonth()!==curMonth) return
+    const key=fmtKey(doneDay)
+    if(!asgn[key]) asgn[key]={tasks:[],totalH:0}
+    const h=t.hours||0
+    asgn[key].tasks.push({id:t.id,name:t.name,h,pending:false,deadline:t.deadline,done:true})
+    asgn[key].totalH+=h
+  })
+
+  // Place pending tasks
+  const withDeadline=tasks.filter(t=>t.deadline).sort((a,b)=>new Date(a.deadline)-new Date(b.deadline))
+  const withoutDeadline=tasks.filter(t=>!t.deadline)
+  const ordered=[...withDeadline,...withoutDeadline]
 
   ordered.forEach(t=>{
     const h=t.hours||0
     if(h<=0){
-      // No hours: place on today (or first workday of month)
       const key=fmtKey(workDays[0]||new Date(curYear,curMonth,1))
       if(!asgn[key]) asgn[key]={tasks:[],totalH:0}
-      asgn[key].tasks.push({id:t.id,name:t.name,h:0,pending:true,deadline:t.deadline})
+      asgn[key].tasks.push({id:t.id,name:t.name,h:0,pending:true,deadline:t.deadline,done:false})
       return
     }
-    // Has hours: fill days
-    let rem=h
-    let di=dayIdx
+    let rem=h; let di=dayIdx
     while(rem>0&&di<workDays.length){
       const key=fmtKey(workDays[di])
       if(!asgn[key]) asgn[key]={tasks:[],totalH:0}
       const avail=cap-asgn[key].totalH
       if(avail<=0){di++;continue}
       const take=Math.min(rem,avail)
-      const ex=asgn[key].tasks.find(x=>x.id===t.id)
-      if(ex) ex.h+=take; else asgn[key].tasks.push({id:t.id,name:t.name,h:take,pending:false,deadline:t.deadline})
+      const ex=asgn[key].tasks.find(x=>x.id===t.id&&!x.done)
+      if(ex) ex.h+=take; else asgn[key].tasks.push({id:t.id,name:t.name,h:take,pending:false,deadline:t.deadline,done:false})
       asgn[key].totalH+=take; rem-=take
       if(asgn[key].totalH>=cap) di++
     }
-    // advance shared dayIdx only for tasks without deadline
     if(!t.deadline) dayIdx=di
   })
   return {asgn,cap}
@@ -423,6 +448,54 @@ function renderCalendar(){
   for(let i=1;i<=rem;i++) grid.appendChild(makeCell(new Date(curYear,curMonth+1,i),true,asgn,cap))
 }
 
+let activePopup=null
+function closePopup(){
+  if(activePopup){activePopup.remove();activePopup=null}
+}
+
+function showDayPopup(cell, dt, dayData, cap){
+  closePopup()
+  const popup=document.createElement('div'); popup.className='day-popup'
+  const dateStr=dt.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})
+  const loadStr=isK()&&dayData?(Math.round(dayData.totalH)+'h / '+cap+'h'):''
+  popup.innerHTML=
+    '<div class="day-popup-header">'+
+      '<span class="day-popup-date">'+dateStr+'</span>'+
+      (loadStr?'<span class="day-popup-load">'+loadStr+'</span>':'')+
+      '<button class="day-popup-close" onclick="closePopup()">✕</button>'+
+    '</div>'
+  if(!dayData||dayData.tasks.length===0){
+    popup.innerHTML+='<div class="day-popup-empty">Sin tareas este día</div>'
+  } else {
+    dayData.tasks.forEach(t=>{
+      const item=document.createElement('div')
+      item.className='day-popup-task'+(t.done?' done-task':'')
+      const dotClass=t.done?'done':'p3'
+      let hStr=''; if(isK()&&t.h) hStr='<span class="popup-h">'+t.h+'h</span>'
+      let dlStr=''; if(t.deadline) dlStr='<span class="popup-dl">📅</span>'
+      item.innerHTML='<div class="popup-dot '+dotClass+'"></div><span class="popup-name">'+t.name+'</span>'+hStr+dlStr
+      popup.appendChild(item)
+    })
+  }
+  document.body.appendChild(popup); activePopup=popup
+
+  // Position: try below cell, flip if off screen
+  const rect=cell.getBoundingClientRect()
+  let top=rect.bottom+6; let left=rect.left
+  if(left+240>window.innerWidth) left=rect.right-240
+  if(top+300>window.innerHeight) top=rect.top-10-Math.min(300,popup.offsetHeight||200)
+  popup.style.top=top+'px'; popup.style.left=left+'px'
+
+  // Close on outside click
+  setTimeout(()=>document.addEventListener('click',outsidePopupClose),10)
+}
+
+function outsidePopupClose(e){
+  if(activePopup&&!activePopup.contains(e.target)){
+    closePopup(); document.removeEventListener('click',outsidePopupClose)
+  }
+}
+
 function makeCell(dt,other,asgn,cap){
   const cell=document.createElement('div')
   const dow=dt.getDay(); const key=fmtKey(dt)
@@ -435,16 +508,28 @@ function makeCell(dt,other,asgn,cap){
         const ld=document.createElement('div');ld.className='day-load'+(d.totalH>cap?' over':'')
         ld.textContent=Math.round(d.totalH)+'h / '+cap+'h'; cell.appendChild(ld)
       }
-      d.tasks.slice(0,3).forEach(t=>{
+      // Show max 2 chips, rest via popup
+      const show=d.tasks.slice(0,2)
+      show.forEach(t=>{
         const chip=document.createElement('div')
-        chip.className='chip p3'+(t.deadline?' has-deadline':'')+(t.pending?' no-hours':'')
+        if(t.done) chip.className='chip done-chip'
+        else chip.className='chip p3'+(t.deadline?' has-deadline':'')+(t.pending?' no-hours':'')
         let right=''
-        if(isK()) right=t.pending?'<span class="chip-h">?h</span>':(t.h?'<span class="chip-h">'+t.h+'h</span>':'')
-        if(t.deadline) right+='<span class="chip-dl">📅</span>'
+        if(isK()&&!t.done) right=t.pending?'<span class="chip-h">?h</span>':(t.h?'<span class="chip-h">'+t.h+'h</span>':'')
+        if(t.deadline&&!t.done) right+='<span class="chip-dl">📅</span>'
         chip.innerHTML='<span class="chip-name">'+t.name+'</span>'+right
         cell.appendChild(chip)
       })
-      if(d.tasks.length>3){const m=document.createElement('div');m.className='more';m.textContent='+'+(d.tasks.length-3)+' más';cell.appendChild(m)}
+      if(d.tasks.length>2){
+        const m=document.createElement('div');m.className='more'
+        m.textContent='+'+(d.tasks.length-2)+' más'
+        m.onclick=(e)=>{e.stopPropagation();showDayPopup(cell,dt,d,cap)}
+        cell.appendChild(m)
+      }
+      // Hover on cell opens popup after short delay
+      let hoverTimer
+      cell.addEventListener('mouseenter',()=>{ hoverTimer=setTimeout(()=>showDayPopup(cell,dt,d,cap),400) })
+      cell.addEventListener('mouseleave',()=>{ clearTimeout(hoverTimer) })
     }
   }
   return cell
@@ -534,9 +619,10 @@ function editHours(e,taskId){
 
 async function completeTask(id){
   const now=new Date().toISOString()
-  await sb.from('tasks').update({done:true,done_at:now}).eq('id',id)
+  const doneKey=fmtKey(today) // store today's date so calendar places it correctly
+  await sb.from('tasks').update({done:true,done_at:now,done_date:doneKey}).eq('id',id)
   const t=tasks.find(x=>x.id===id)
-  if(t){t.done=true;t.done_at=now;doneTasks.unshift(t)}
+  if(t){t.done=true;t.done_at=now;t.done_date=doneKey;doneTasks.unshift(t)}
   tasks=tasks.filter(x=>x.id!==id)
   renderQueue(); renderCalendar(); updatePendingIndicators()
   toast('Tarea completada ✓')
